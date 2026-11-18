@@ -1,0 +1,16 @@
+# Copy to reportportal.properties in the working directory, or use the environment
+# variables in the README. Do not commit a real token.
+rp.endpoint=https://rp.example.com
+rp.api.key=your_api_token_here
+rp.project=my_project
+rp.launch=Checkout load test
+rp.sla.p95.ms=800
+rp.sla.p99.ms=1500
+rp.sla.error.rate.pct=1
+rp.sla.min.throughput.rps=50
+rp.sla.min.peak.throughput.rps=80
+rp.throughput.window.seconds=5
+rp.sample.exclude.regex=health
+rp.attribute.1=env:staging
+rp.attribute.2=release:24.3
+rp.attribute.3=nightly

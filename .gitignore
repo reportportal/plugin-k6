@@ -1,0 +1,4 @@
+/k6
+*.exe
+.tools/
+/vendor
