@@ -2,6 +2,8 @@ package reportportal
 
 import (
 	"math"
+	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -77,14 +79,18 @@ func mapSample(container metrics.SampleContainer, batch []metrics.Sample, sample
 	start := end.Add(-time.Duration(duration) * time.Millisecond)
 
 	code := tag(container, sample, "status")
-	message := tag(container, sample, "error")
+	// k6 sets the error tag only for transport failures. An HTTP 4xx/5xx still
+	// completes, and the only extra signal is error_code = 1000 + status.
+	errorText := tag(container, sample, "error")
+	message := responseMessage(code, errorText, tag(container, sample, "error_code"))
 	var responseBody *string
-	if message != "" {
-		responseBody = &message
+	if errorText != "" {
+		responseBody = &errorText
 	}
 
 	return perf.Sample{
 		Label:           name,
+		URL:             tag(container, sample, "url"),
 		Scenario:        scenario,
 		Thread:          thread,
 		Timestamp:       start,
@@ -94,6 +100,25 @@ func mapSample(container metrics.SampleContainer, batch []metrics.Sample, sample
 		ResponseMessage: message,
 		ResponseBody:    responseBody,
 	}
+}
+
+// responseMessage prefers k6's error string. Otherwise it uses the HTTP reason
+// phrase, and the k6 error_code when that phrase is missing.
+func responseMessage(status, errorText, errorCode string) string {
+	if errorText != "" {
+		return errorText
+	}
+	message := ""
+	if code, err := strconv.Atoi(status); err == nil && code > 0 {
+		message = http.StatusText(code)
+	}
+	if errorCode == "" {
+		return message
+	}
+	if message == "" {
+		return "k6 error_code " + errorCode
+	}
+	return message + " (error_code " + errorCode + ")"
 }
 
 func failed(batch []metrics.Sample, duration metrics.Sample, container metrics.SampleContainer) bool {
