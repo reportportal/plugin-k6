@@ -5,7 +5,7 @@ import (
 
 	"go.k6.io/k6/v2/metrics"
 
-	"github.com/reportportal/plugin-performance-k6/internal/perf"
+	"github.com/reportportal/plugin-k6/internal/perf"
 )
 
 // bodyPairer holds each failed request until its response body arrives.

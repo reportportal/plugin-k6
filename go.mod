@@ -1,4 +1,4 @@
-module github.com/reportportal/plugin-performance-k6
+module github.com/reportportal/plugin-k6
 
 go 1.26.0
 

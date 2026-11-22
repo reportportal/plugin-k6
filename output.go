@@ -14,7 +14,7 @@ import (
 	"go.k6.io/k6/v2/metrics"
 	"go.k6.io/k6/v2/output"
 
-	"github.com/reportportal/plugin-performance-k6/internal/perf"
+	"github.com/reportportal/plugin-k6/internal/perf"
 )
 
 const propertiesFile = "reportportal.properties"

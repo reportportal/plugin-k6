@@ -55,7 +55,7 @@ Use the project slug from the address bar (`https://demo.reportportal.io/ui/#my_
 The extension is compiled into a k6 binary. Install [xk6](https://github.com/grafana/xk6), then from this repository:
 
 ```bash
-xk6 build --with github.com/reportportal/plugin-performance-k6=.
+xk6 build --with github.com/reportportal/plugin-k6=.
 ```
 
 That writes `./k6`. Use that binary instead of a stock k6.
@@ -150,7 +150,7 @@ After the test finishes, open the project in ReportPortal and find the launch.
 
 ```bash
 go test ./...
-xk6 build --with github.com/reportportal/plugin-performance-k6=.
+xk6 build --with github.com/reportportal/plugin-k6=.
 ```
 
 Go 1.26 or newer, matching k6 v2.

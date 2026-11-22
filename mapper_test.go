@@ -8,7 +8,7 @@ import (
 
 	"go.k6.io/k6/v2/metrics"
 
-	"github.com/reportportal/plugin-performance-k6/internal/perf"
+	"github.com/reportportal/plugin-k6/internal/perf"
 )
 
 func samplesFrom(container metrics.SampleContainer) []perf.Sample {
