@@ -2,3 +2,8 @@
 *.exe
 .tools/
 /vendor
+__pycache__/
+
+# Local settings with a real API token
+/reportportal.properties
+/examples/reportportal.env
