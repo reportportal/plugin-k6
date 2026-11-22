@@ -31,7 +31,9 @@ HTTP and gRPC requests are reported (`http_req_duration`, `grpc_req_duration`). 
 
 k6 does not pass request or response bodies to outputs by default. A transport failure is logged from the `error` tag. An HTTP error status has no `error` tag, so the response message is the reason phrase (for example `504` becomes `Gateway Timeout`) plus `error_code` when that tag is enabled. Include `error_code` in `systemTags` for that.
 
-Request bodies can be sent as a `request_body` tag on each request. The hub enables this with `REPORT_REQUEST_BODIES`. Each request then carries its body, so that tag adds cost on every request, and InfluxDB should be off for that run. Response bodies cannot be sent this way, because the script sets tags before the response exists. The Gatling plugin has the same limitation for response bodies.
+Request bodies can be sent as a `request_body` tag on each request. The hub enables this with `REPORT_REQUEST_BODIES`. Each request then carries its body, so that tag adds cost on every request, and InfluxDB should be off for that run.
+
+Response bodies cannot be a tag, because k6 sets tags before the response exists. Instead, the script writes an `rp_response_body` counter right after a failed response. Its `response_body` tag holds the body, and `name` and `vu` identify the request. The output holds each failed request until that counter arrives from the same VU, then attaches the body. A held request is released without a body when the same VU makes its next request, or when the test stops. The hub enables this with `REPORT_RESPONSE_BODIES`. Only failed responses are sent, so the extra data stays small. Include `vu` in `systemTags` so the body can be matched to its request. Store `response_body` as a field, not a tag, in InfluxDB (`K6_INFLUXDB_TAGS_AS_FIELDS`), so each body does not create a new series.
 
 A start event is also sent to Google Analytics (agent name `@reportportal/k6`, plugin version, and the k6 version). It uses the same Measurement Protocol property as the JMeter and Gatling plugins, and the same anonymous client id in `~/.rp/rp.properties`. Set `AGENT_NO_ANALYTICS` to any value to skip it.
 
@@ -137,7 +139,7 @@ After the test finishes, open the project in ReportPortal and find the launch.
 - SLA thresholds are global (p95, p99, error rate, optional minimum overall and peak throughput) and are evaluated once at the end. There are no per-request thresholds.
 - Percentiles use an HdrHistogram with 2 significant digits (about 1% error). Response times above 1 hour are clipped to 1 hour. The histogram floor is 1ms, so a sub-millisecond sample is recorded as 1ms.
 - At most 1000 distinct request labels. Everything after that is folded into `(other requests)`.
-- At most 20 failed samples are reported per label. Response text is truncated at 3000 characters. k6 does not provide bodies.
+- At most 20 failed samples are reported per label. Response text is truncated at 3000 characters. k6 does not pass bodies to outputs, so a response body appears only when the script sends it with `rp_response_body`.
 - At most 5 custom launch attributes.
 - WebSocket, browser, and custom trends are not request samples and are not reported.
 - `check()` results are not request failures unless the status also fails k6's expected-status rules.

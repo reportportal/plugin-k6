@@ -17,11 +17,26 @@ import (
 // once per call; submetric series are ignored by matching the metric name exactly.
 // The sample timestamp is the request completion time.
 func SamplesFrom(container metrics.SampleContainer) []perf.Sample {
+	var out []perf.Sample
+	for _, request := range requestsFrom(container) {
+		out = append(out, request.sample)
+	}
+	return out
+}
+
+// requestSample is one completed request plus the keys that pair it with its response body.
+type requestSample struct {
+	vu     string
+	key    string
+	sample perf.Sample
+}
+
+func requestsFrom(container metrics.SampleContainer) []requestSample {
 	if container == nil {
 		return nil
 	}
 	raw := container.GetSamples()
-	var out []perf.Sample
+	var out []requestSample
 	for _, sample := range raw {
 		if sample.Metric == nil {
 			continue
@@ -31,9 +46,48 @@ func SamplesFrom(container metrics.SampleContainer) []perf.Sample {
 		default:
 			continue
 		}
-		out = append(out, mapSample(container, raw, sample))
+		vu := tag(container, sample, "vu")
+		out = append(out, requestSample{
+			vu:     vu,
+			key:    bodyKey(vu, tag(container, sample, "name")),
+			sample: mapSample(container, raw, sample),
+		})
 	}
 	return out
+}
+
+// responseBodyMetric is the counter the k6 script writes right after a failed response.
+// Its response_body tag holds the body, so the body is not known when the request starts.
+const responseBodyMetric = "rp_response_body"
+
+type responseBody struct {
+	vu   string
+	key  string
+	text string
+}
+
+func responseBodiesFrom(container metrics.SampleContainer) []responseBody {
+	if container == nil {
+		return nil
+	}
+	var out []responseBody
+	for _, sample := range container.GetSamples() {
+		if sample.Metric == nil || sample.Metric.Name != responseBodyMetric {
+			continue
+		}
+		text := tag(container, sample, "response_body")
+		if text == "" {
+			continue
+		}
+		vu := tag(container, sample, "vu")
+		out = append(out, responseBody{vu: vu, key: bodyKey(vu, tag(container, sample, "name")), text: text})
+	}
+	return out
+}
+
+// bodyKey pairs a failed request with a response body from the same VU and request name.
+func bodyKey(vu, name string) string {
+	return vu + "\x00" + name
 }
 
 func mapSample(container metrics.SampleContainer, batch []metrics.Sample, sample metrics.Sample) perf.Sample {

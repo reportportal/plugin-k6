@@ -29,6 +29,7 @@ type Output struct {
 	config    perf.Config
 	reporter  *perf.Reporter
 	analytics *perf.Analytics
+	pairer    *bodyPairer
 }
 
 // New validates configuration. Network calls happen in Start.
@@ -56,6 +57,7 @@ func New(params output.Params) (output.Output, error) {
 		config:    cfg,
 		reporter:  perf.NewReporter(client, cfg.SLA, cfg.WindowSeconds, cfg.Attributes, logger),
 		analytics: perf.NewAnalytics(perf.AnalyticsEnabled(env), perf.PluginAgent(), logger),
+		pairer:    newBodyPairer(),
 	}, nil
 }
 
@@ -77,16 +79,22 @@ func (o *Output) Start() error {
 
 func (o *Output) AddMetricSamples(containers []metrics.SampleContainer) {
 	for _, container := range containers {
-		for _, sample := range SamplesFrom(container) {
-			if o.config.Filter != nil && !o.config.Filter.Accept(sample.Label) {
-				continue
-			}
-			o.reporter.Process(sample)
+		o.report(o.pairer.Push(container))
+	}
+}
+
+// report hands samples to the reporter, after the label filter.
+func (o *Output) report(samples []perf.Sample) {
+	for _, sample := range samples {
+		if o.config.Filter != nil && !o.config.Filter.Accept(sample.Label) {
+			continue
 		}
+		o.reporter.Process(sample)
 	}
 }
 
 func (o *Output) Stop() error {
+	o.report(o.pairer.Flush())
 	err := o.reporter.Shutdown()
 	o.analytics.Finish()
 	return err
