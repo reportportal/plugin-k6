@@ -49,6 +49,34 @@ func TestSamplesFromHTTPRequest(t *testing.T) {
 	}
 }
 
+func TestRequestBodyTagReachesFailureLog(t *testing.T) {
+	registry := metrics.NewRegistry()
+	duration := registry.MustNewMetric("http_req_duration", metrics.Trend)
+	failed := registry.MustNewMetric("http_req_failed", metrics.Trend)
+	tags := registry.RootTagSet().
+		With("name", "Create Nested Log").
+		With("status", "500").
+		With("request_body", `{"message":"hi"}`).
+		With("expected_response", "false")
+	end := time.UnixMilli(1_700_000_000_000)
+	container := metrics.ConnectedSamples{
+		Time: end,
+		Tags: tags,
+		Samples: []metrics.Sample{
+			{TimeSeries: metrics.TimeSeries{Metric: duration, Tags: tags}, Time: end, Value: 32},
+			{TimeSeries: metrics.TimeSeries{Metric: failed, Tags: tags}, Time: end, Value: 1},
+		},
+	}
+
+	got := SamplesFrom(container)
+	if len(got) != 1 || got[0].RequestBody == nil || *got[0].RequestBody != `{"message":"hi"}` {
+		t.Fatalf("request body %+v", got)
+	}
+	if detail := perf.FailureDetail(got[0]); !strings.Contains(detail, "--- REQUEST BODY ---\n"+`{"message":"hi"}`) {
+		t.Fatalf("detail:\n%s", detail)
+	}
+}
+
 func TestHTTPStatusWithoutErrorTag(t *testing.T) {
 	registry := metrics.NewRegistry()
 	duration := registry.MustNewMetric("http_req_duration", metrics.Trend)
@@ -57,7 +85,6 @@ func TestHTTPStatusWithoutErrorTag(t *testing.T) {
 		With("name", "Create Nested Log").
 		With("group", "::reporting").
 		With("status", "504").
-		With("url", "https://example.test/api/v1/log").
 		With("error_code", "1504").
 		With("expected_response", "false")
 	end := time.UnixMilli(1_700_000_000_000)
@@ -78,11 +105,11 @@ func TestHTTPStatusWithoutErrorTag(t *testing.T) {
 	if sample.Success || sample.ResponseCode != "504" || sample.ResponseMessage != "Gateway Timeout (error_code 1504)" {
 		t.Fatalf("result %+v", sample)
 	}
-	if sample.URL != "https://example.test/api/v1/log" || sample.ResponseBody != nil {
-		t.Fatalf("url %q body %v", sample.URL, sample.ResponseBody)
+	if sample.ResponseBody != nil {
+		t.Fatalf("body %v", sample.ResponseBody)
 	}
 	detail := perf.FailureDetail(sample)
-	if !strings.Contains(detail, "URL: https://example.test/api/v1/log") || !strings.Contains(detail, "Response Message: Gateway Timeout (error_code 1504)") {
+	if strings.Contains(detail, "URL: ") || !strings.Contains(detail, "Response Message: Gateway Timeout (error_code 1504)") {
 		t.Fatalf("detail:\n%s", detail)
 	}
 	if !sample.EndTime().Equal(end) {

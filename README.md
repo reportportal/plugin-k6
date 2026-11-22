@@ -29,7 +29,9 @@ k6 scenarios become `Scenario:` suites. A `group()` is prefixed onto the request
 
 HTTP and gRPC requests are reported (`http_req_duration`, `grpc_req_duration`). A request is failed when k6 says it failed (`http_req_failed` / `grpc_req_failed`, or `expected_response=false`). By default that is any status outside 200–399, plus network errors. `check()` does not change that on its own.
 
-k6 does not pass request or response bodies to outputs. A transport failure is logged from the `error` tag. An HTTP error status has no `error` tag, so the response message is the reason phrase (for example `504` becomes `Gateway Timeout`) plus `error_code` when that tag is enabled. The response body stays unavailable, which is the same limitation the Gatling plugin has. Include `url` and `error_code` in `systemTags` if those lines should be filled in.
+k6 does not pass request or response bodies to outputs by default. A transport failure is logged from the `error` tag. An HTTP error status has no `error` tag, so the response message is the reason phrase (for example `504` becomes `Gateway Timeout`) plus `error_code` when that tag is enabled. Include `error_code` in `systemTags` for that.
+
+Request bodies can be sent as a `request_body` tag on each request. The hub enables this with `REPORT_REQUEST_BODIES`. Each request then carries its body, so that tag adds cost on every request, and InfluxDB should be off for that run. Response bodies cannot be sent this way, because the script sets tags before the response exists. The Gatling plugin has the same limitation for response bodies.
 
 A start event is also sent to Google Analytics (agent name `@reportportal/k6`, plugin version, and the k6 version). It uses the same Measurement Protocol property as the JMeter and Gatling plugins, and the same anonymous client id in `~/.rp/rp.properties`. Set `AGENT_NO_ANALYTICS` to any value to skip it.
 

@@ -107,14 +107,9 @@ func FailureDetail(sample Sample) string {
 	if sample.ResponseBody != nil {
 		responseBody = Truncate(*sample.ResponseBody, responseBodyLimit)
 	}
-	urlLine := ""
-	if sample.URL != "" {
-		urlLine = "URL: " + sample.URL + "\n"
-	}
 	return fmt.Sprintf(
 		"REQUEST FAILURE DETAIL:\n\n"+
 			"URL/Sampler: %s\n"+
-			"%s"+
 			"Thread: %s\n"+
 			"Elapsed: %d ms\n"+
 			"Response Code: %s\n"+
@@ -122,7 +117,6 @@ func FailureDetail(sample Sample) string {
 			"--- REQUEST BODY ---\n%s\n\n"+
 			"--- RESPONSE BODY ---\n%s",
 		sample.Label,
-		urlLine,
 		sample.Thread,
 		sample.DurationMs,
 		sample.ResponseCode,

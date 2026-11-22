@@ -87,10 +87,14 @@ func mapSample(container metrics.SampleContainer, batch []metrics.Sample, sample
 	if errorText != "" {
 		responseBody = &errorText
 	}
+	// The script sends the JSON body as a request_body tag when REPORT_REQUEST_BODIES is on.
+	var requestBody *string
+	if body := tag(container, sample, "request_body"); body != "" {
+		requestBody = &body
+	}
 
 	return perf.Sample{
 		Label:           name,
-		URL:             tag(container, sample, "url"),
 		Scenario:        scenario,
 		Thread:          thread,
 		Timestamp:       start,
@@ -98,6 +102,7 @@ func mapSample(container metrics.SampleContainer, batch []metrics.Sample, sample
 		Success:         !failed(batch, sample, container),
 		ResponseCode:    code,
 		ResponseMessage: message,
+		RequestBody:     requestBody,
 		ResponseBody:    responseBody,
 	}
 }
