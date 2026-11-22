@@ -77,6 +77,36 @@ func TestRequestBodyTagReachesFailureLog(t *testing.T) {
 	}
 }
 
+func TestRequestURLTagReachesFailureLog(t *testing.T) {
+	registry := metrics.NewRegistry()
+	duration := registry.MustNewMetric("http_req_duration", metrics.Trend)
+	failed := registry.MustNewMetric("http_req_failed", metrics.Trend)
+	tags := registry.RootTagSet().
+		With("name", "Create Nested Log").
+		With("url", "Create Nested Log"). // k6 copies name into url
+		With("status", "400").
+		With("request_url", "https://rp.example.test/api/v1/project/log?x=1").
+		With("expected_response", "false")
+	end := time.UnixMilli(1_700_000_000_000)
+	container := metrics.ConnectedSamples{
+		Time: end,
+		Tags: tags,
+		Samples: []metrics.Sample{
+			{TimeSeries: metrics.TimeSeries{Metric: duration, Tags: tags}, Time: end, Value: 12},
+			{TimeSeries: metrics.TimeSeries{Metric: failed, Tags: tags}, Time: end, Value: 1},
+		},
+	}
+
+	got := SamplesFrom(container)
+	if len(got) != 1 || got[0].URL != "https://rp.example.test/api/v1/project/log?x=1" {
+		t.Fatalf("url %+v", got)
+	}
+	want := "URL/Sampler: Create Nested Log\nURL: https://rp.example.test/api/v1/project/log?x=1\nThread:"
+	if detail := perf.FailureDetail(got[0]); !strings.Contains(detail, want) {
+		t.Fatalf("detail:\n%s", detail)
+	}
+}
+
 func TestHTTPStatusWithoutErrorTag(t *testing.T) {
 	registry := metrics.NewRegistry()
 	duration := registry.MustNewMetric("http_req_duration", metrics.Trend)

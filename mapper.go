@@ -148,7 +148,9 @@ func mapSample(container metrics.SampleContainer, batch []metrics.Sample, sample
 	}
 
 	return perf.Sample{
-		Label:           name,
+		Label: name,
+		// k6 copies the name tag into url, so the script sends the exact URL as request_url.
+		URL:             tag(container, sample, "request_url"),
 		Scenario:        scenario,
 		Thread:          thread,
 		Timestamp:       start,

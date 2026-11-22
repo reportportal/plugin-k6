@@ -6,6 +6,7 @@ import "time"
 // Timestamp is the request start. The completion time is Timestamp plus DurationMs.
 type Sample struct {
 	Label           string
+	URL             string
 	Scenario        string
 	Thread          string
 	Timestamp       time.Time
