@@ -1,6 +1,7 @@
 package perf
 
 import (
+	"fmt"
 	"math"
 	"sort"
 )
@@ -30,33 +31,7 @@ func (t Throughput) FormatOverall() string { return formatCents(t.OverallCents) 
 func (t Throughput) FormatPeak() string { return formatCents(t.PeakCents) }
 
 func formatCents(cents int64) string {
-	sign := ""
-	if cents < 0 {
-		sign = "-"
-		cents = -cents
-	}
-	return sign + itoa(cents/100) + "." + twoDigits(cents%100)
-}
-
-func twoDigits(v int64) string {
-	if v < 10 {
-		return "0" + itoa(v)
-	}
-	return itoa(v)
-}
-
-func itoa(v int64) string {
-	if v == 0 {
-		return "0"
-	}
-	var buf [20]byte
-	i := len(buf)
-	for v > 0 {
-		i--
-		buf[i] = byte('0' + v%10)
-		v /= 10
-	}
-	return string(buf[i:])
+	return fmt.Sprintf("%d.%02d", cents/100, cents%100)
 }
 
 // Aggregator collects spans during the run. Snapshot is called once at the end.
@@ -65,22 +40,18 @@ type Aggregator struct {
 }
 
 func (a *Aggregator) Record(startMs, endMs int64) {
-	if endMs < startMs {
-		endMs = startMs
-	}
 	a.spans = append(a.spans, Span{StartMs: startMs, EndMs: endMs})
 }
 
-// Snapshot computes overall mean and peak throughput.
-// WindowSeconds below 1 is treated as the default of 1.
-// The lifecycle is [earliest start, latest completion]. A run shorter than the
-// window uses the overall mean as the peak, so a sub-second burst is not divided
-// by the full window. A zero-length timeline yields 0.00.
+// Snapshot computes overall mean and peak throughput over the recorded spans.
 func (a *Aggregator) Snapshot(windowSeconds int) Throughput {
 	return Calculate(a.spans, windowSeconds)
 }
 
 // Calculate is the pure throughput math shared with the Java plugin.
+// The lifecycle is [earliest start, latest completion]. A run shorter than the
+// window uses the overall mean as the peak, so a sub-second burst is not divided
+// by the full window. A zero-length timeline yields 0.00. WindowSeconds below 1 is 1.
 func Calculate(spans []Span, windowSeconds int) Throughput {
 	if windowSeconds < 1 {
 		windowSeconds = 1
@@ -93,32 +64,18 @@ func Calculate(spans []Span, windowSeconds int) Throughput {
 	tEnd := int64(math.MinInt64)
 	ends := make([]int64, len(spans))
 	for i, span := range spans {
-		start, end := span.StartMs, span.EndMs
-		if end < start {
-			end = start
-		}
-		if start < tStart {
-			tStart = start
-		}
-		if end > tEnd {
-			tEnd = end
-		}
+		end := max(span.EndMs, span.StartMs)
+		tStart = min(tStart, span.StartMs)
+		tEnd = max(tEnd, end)
 		ends[i] = end
 	}
 
 	duration := tEnd - tStart
-	if duration < 0 {
-		duration = 0
-	}
 	overall := rpsCents(int64(len(spans)), duration)
 	peak := overall
 	windowMs := int64(windowSeconds) * 1000
-	if duration > 0 && duration >= windowMs {
+	if duration >= windowMs {
 		peak = peakCents(ends, windowMs)
-	}
-	if duration <= 0 {
-		overall = 0
-		peak = 0
 	}
 	return Throughput{
 		OverallCents: overall,
@@ -129,9 +86,6 @@ func Calculate(spans []Span, windowSeconds int) Throughput {
 }
 
 func peakCents(endTimes []int64, windowMs int64) int64 {
-	if len(endTimes) == 0 || windowMs <= 0 {
-		return 0
-	}
 	sorted := append([]int64(nil), endTimes...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
 

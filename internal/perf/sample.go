@@ -20,8 +20,5 @@ type Sample struct {
 
 // EndTime is the request completion time.
 func (s Sample) EndTime() time.Time {
-	if s.DurationMs <= 0 {
-		return s.Timestamp
-	}
 	return s.Timestamp.Add(time.Duration(s.DurationMs) * time.Millisecond)
 }

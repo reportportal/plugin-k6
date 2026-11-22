@@ -31,7 +31,6 @@ type Client struct {
 	http       *http.Client
 	logger     Logger
 	launchUUID string
-	launchDBID int64
 }
 
 func NewClient(endpoint, token, project string, logger Logger) *Client {
@@ -159,9 +158,6 @@ func (c *Client) UpdateLaunch(description string, attributes []Attribute) error 
 }
 
 func (c *Client) numericLaunchID() (string, error) {
-	if c.launchDBID > 0 {
-		return fmt.Sprintf("%d", c.launchDBID), nil
-	}
 	var resource struct {
 		ID int64 `json:"id"`
 	}
@@ -172,7 +168,6 @@ func (c *Client) numericLaunchID() (string, error) {
 		}
 		last = c.send(http.MethodGet, c.projectPath("launch/uuid/"+url.PathEscape(c.launchUUID)), nil, &resource)
 		if last == nil && resource.ID > 0 {
-			c.launchDBID = resource.ID
 			return fmt.Sprintf("%d", resource.ID), nil
 		}
 	}
@@ -255,9 +250,6 @@ func trimBody(data []byte) string {
 
 // FormatTime renders the UTC timestamp ReportPortal stores (millisecond precision).
 func FormatTime(t time.Time) string {
-	if t.IsZero() {
-		t = time.Now()
-	}
 	return t.UTC().Format("2006-01-02T15:04:05.000Z")
 }
 

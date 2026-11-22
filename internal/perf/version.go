@@ -35,27 +35,18 @@ func PluginAgent() AgentInfo {
 
 // Interpreter matches the Java plugins' "Java <version>" parameter: "Go <version>".
 func Interpreter() string {
-	v := strings.TrimPrefix(runtime.Version(), "go")
-	return "Go " + v
+	return "Go " + strings.TrimPrefix(runtime.Version(), "go")
 }
 
-// FrameworkVersion returns the go.k6.io/k6/v2 module version linked into this binary.
+// FrameworkVersion returns the go.k6.io/k6/v2 version linked into this binary.
+// xk6 builds list k6 as a dependency, so a missing or (devel) version returns "".
 func FrameworkVersion() string {
 	info, ok := debug.ReadBuildInfo()
 	if !ok {
 		return ""
 	}
-	if info.Main.Path == "go.k6.io/k6/v2" && info.Main.Version != "" && info.Main.Version != "(devel)" {
-		return info.Main.Version
-	}
 	for _, dep := range info.Deps {
-		if dep.Path != "go.k6.io/k6/v2" {
-			continue
-		}
-		if dep.Replace != nil && dep.Replace.Version != "" && dep.Replace.Version != "(devel)" {
-			return dep.Replace.Version
-		}
-		if dep.Version != "" && dep.Version != "(devel)" {
+		if dep.Path == "go.k6.io/k6/v2" && dep.Version != "(devel)" {
 			return dep.Version
 		}
 	}

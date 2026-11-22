@@ -7,6 +7,11 @@ import (
 )
 
 const (
+	// MaxTrackedNames bounds distinct requests. Further ones are reported under OverflowName.
+	MaxTrackedNames = 1000
+	// OverflowName absorbs requests after MaxTrackedNames.
+	OverflowName = "(other requests)"
+
 	maxFailedSamplesPerRequest = 20
 	requestKeySep              = "\x00"
 )
@@ -23,6 +28,7 @@ type Reporter struct {
 	throughput    *Aggregator
 	scenarios     []*scenarioNode
 	scenarioIndex map[string]*scenarioNode
+	requests      int
 	labelOverflow bool
 	summaryID     string
 	started       bool
@@ -39,9 +45,7 @@ type scenarioNode struct {
 }
 
 type requestNode struct {
-	key      string
 	label    string
-	scenario string
 	first    time.Time
 	failures int
 	reported []Sample
@@ -49,7 +53,6 @@ type requestNode struct {
 	id       string
 }
 
-// NewReporter builds a reporter. portal and the SLA/attribute values are fixed for the run.
 func NewReporter(portal Portal, sla SLAConfig, windowSeconds int, custom []Attribute, logger Logger) *Reporter {
 	if windowSeconds < 1 {
 		windowSeconds = 1
@@ -237,7 +240,7 @@ func (r *Reporter) trackedLabel(sample Sample) string {
 		scenario = "Unknown"
 	}
 	key := scenario + requestKeySep + label
-	if r.requestCount() < MaxTrackedNames || r.hasRequest(key) {
+	if r.requests < MaxTrackedNames || r.hasRequest(key) {
 		return label
 	}
 	if !r.labelOverflow {
@@ -246,14 +249,6 @@ func (r *Reporter) trackedLabel(sample Sample) string {
 			MaxTrackedNames, OverflowName)
 	}
 	return OverflowName
-}
-
-func (r *Reporter) requestCount() int {
-	n := 0
-	for _, scenario := range r.scenarios {
-		n += len(scenario.requests)
-	}
-	return n
 }
 
 func (r *Reporter) hasRequest(key string) bool {
@@ -283,14 +278,10 @@ func (r *Reporter) remember(sample Sample, label string) {
 	key := scenarioName + requestKeySep + label
 	request := scenario.index[key]
 	if request == nil {
-		request = &requestNode{
-			key:      key,
-			label:    label,
-			scenario: scenarioName,
-			first:    sample.Timestamp,
-		}
+		request = &requestNode{label: label, first: sample.Timestamp}
 		scenario.index[key] = request
 		scenario.requests = append(scenario.requests, request)
+		r.requests++
 	}
 	if sample.Success {
 		return

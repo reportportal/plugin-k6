@@ -3,11 +3,6 @@ package perf
 import "github.com/HdrHistogram/hdrhistogram-go"
 
 const (
-	// MaxTrackedNames bounds distinct request labels. Names past the cap fold into OverflowName.
-	MaxTrackedNames = 1000
-	// OverflowName absorbs request labels after MaxTrackedNames.
-	OverflowName = "(other requests)"
-
 	// highestTrackableMs is one hour. Two significant digits match the Java HdrHistogram (~1% error).
 	highestTrackableMs int64 = 3_600_000
 	significantDigits        = 2
@@ -68,7 +63,7 @@ func (s *Stats) add(durationMs int64, success bool) {
 
 // ErrorRate is failed/total as a percent. Empty series return 0.
 func (s *Stats) ErrorRate() float64 {
-	if s == nil || s.Total == 0 {
+	if s.Total == 0 {
 		return 0
 	}
 	return float64(s.Failed) / float64(s.Total) * 100
@@ -76,7 +71,7 @@ func (s *Stats) ErrorRate() float64 {
 
 // Avg is the integer mean, matching Java long division.
 func (s *Stats) Avg() int64 {
-	if s == nil || s.Total == 0 {
+	if s.Total == 0 {
 		return 0
 	}
 	return s.Sum / s.Total
@@ -84,35 +79,19 @@ func (s *Stats) Avg() int64 {
 
 // Percentile returns the histogram value at p (0-100). An empty series returns 0.
 func (s *Stats) Percentile(p float64) int64 {
-	if s == nil || s.hist == nil || s.hist.TotalCount() == 0 {
+	if s.hist == nil || s.hist.TotalCount() == 0 {
 		return 0
 	}
 	return s.hist.ValueAtPercentile(p)
 }
 
-func (s *Stats) snapshot() Stats {
-	if s == nil {
-		return Stats{Name: "Global"}
-	}
-	return Stats{
-		Name:    s.Name,
-		Total:   s.Total,
-		Success: s.Success,
-		Failed:  s.Failed,
-		Min:     s.Min,
-		Max:     s.Max,
-		Sum:     s.Sum,
-		hist:    s.hist,
-		minSet:  s.minSet,
-	}
-}
+func (s *Stats) snapshot() Stats { return *s }
 
-// Collector aggregates per-label and global latency with a fixed memory bound.
+// Collector aggregates per-label and global latency. The reporter bounds the number of labels.
 type Collector struct {
-	byName   map[string]*Stats
-	order    []string
-	global   *Stats
-	overflow bool
+	byName map[string]*Stats
+	order  []string
+	global *Stats
 }
 
 func NewCollector() *Collector {
@@ -122,31 +101,16 @@ func NewCollector() *Collector {
 	}
 }
 
-// Record adds one sample under name, folding new names past MaxTrackedNames into OverflowName.
+// Record adds one sample under name.
 func (c *Collector) Record(name string, durationMs int64, success bool) {
-	c.statsFor(name).add(durationMs, success)
+	stats, ok := c.byName[name]
+	if !ok {
+		stats = newStats(name)
+		c.byName[name] = stats
+		c.order = append(c.order, name)
+	}
+	stats.add(durationMs, success)
 	c.global.add(durationMs, success)
-}
-
-func (c *Collector) statsFor(name string) *Stats {
-	if existing, ok := c.byName[name]; ok {
-		return existing
-	}
-	if len(c.byName) >= MaxTrackedNames {
-		c.overflow = true
-		return c.ensure(OverflowName)
-	}
-	return c.ensure(name)
-}
-
-func (c *Collector) ensure(name string) *Stats {
-	if existing, ok := c.byName[name]; ok {
-		return existing
-	}
-	stats := newStats(name)
-	c.byName[name] = stats
-	c.order = append(c.order, name)
-	return stats
 }
 
 // Series returns per-label stats in first-seen order.
@@ -170,9 +134,4 @@ func (c *Collector) ByName(name string) (Stats, bool) {
 // Global returns the merged series.
 func (c *Collector) Global() Stats {
 	return c.global.snapshot()
-}
-
-// OverflowReported is true after a label was folded into OverflowName.
-func (c *Collector) OverflowReported() bool {
-	return c.overflow
 }

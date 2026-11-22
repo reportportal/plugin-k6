@@ -35,24 +35,12 @@ type Analytics struct {
 	clientIDPath string
 	agent        AgentInfo
 	http         *http.Client
-	logger       Logger
-
-	mu   sync.Mutex
-	wg   sync.WaitGroup
-	sent bool
+	wg           sync.WaitGroup
 }
 
 // AnalyticsEnabled reports whether the disable switch is absent.
 // A present key, even with an empty value, disables analytics.
 func AnalyticsEnabled(env map[string]string) bool {
-	if env == nil {
-		_, disabled := os.LookupEnv(DisableEnv)
-		return !disabled
-	}
-	_, disabled := env[DisableEnv]
-	if disabled {
-		return false
-	}
 	for key := range env {
 		if strings.EqualFold(key, DisableEnv) {
 			return false
@@ -62,7 +50,7 @@ func AnalyticsEnabled(env map[string]string) bool {
 }
 
 // NewAnalytics builds the sender. CollectURL and the client-id file use the shared defaults.
-func NewAnalytics(enabled bool, agent AgentInfo, logger Logger) *Analytics {
+func NewAnalytics(enabled bool, agent AgentInfo) *Analytics {
 	home, err := os.UserHomeDir()
 	path := ""
 	if err == nil && home != "" {
@@ -73,7 +61,6 @@ func NewAnalytics(enabled bool, agent AgentInfo, logger Logger) *Analytics {
 		collectURL:   defaultCollectURL(),
 		clientIDPath: path,
 		agent:        agent,
-		logger:       logger,
 		http: &http.Client{
 			Timeout: analyticsFlushTimeout,
 		},
@@ -82,18 +69,10 @@ func NewAnalytics(enabled bool, agent AgentInfo, logger Logger) *Analytics {
 
 // Start sends the event in the background. It does not wait and never fails the run.
 func (a *Analytics) Start() {
-	if a == nil || !a.enabled || a.collectURL == "" {
+	if !a.enabled {
 		return
 	}
-	a.mu.Lock()
-	if a.sent {
-		a.mu.Unlock()
-		return
-	}
-	a.sent = true
 	a.wg.Add(1)
-	a.mu.Unlock()
-
 	go func() {
 		defer a.wg.Done()
 		a.send()
@@ -102,7 +81,7 @@ func (a *Analytics) Start() {
 
 // Finish waits briefly for the event to leave, then returns. Analytics errors are ignored.
 func (a *Analytics) Finish() {
-	if a == nil || !a.enabled {
+	if !a.enabled {
 		return
 	}
 	done := make(chan struct{})
@@ -170,9 +149,7 @@ func (a *Analytics) clientID() string {
 		return id
 	}
 	id = newClientID()
-	if err := writeClientID(a.clientIDPath, id); err != nil {
-		return id
-	}
+	_ = writeClientID(a.clientIDPath, id) // best effort: the event is still sent with a fresh id
 	return id
 }
 

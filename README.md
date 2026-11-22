@@ -27,15 +27,15 @@ The launch description holds the SLA table, so the quality gate is visible from 
 
 k6 scenarios become `Scenario:` suites. A `group()` is prefixed onto the request label (`Checkout / GET /pizza`), same as Gatling groups. Set a stable `name` tag on each request so labels do not contain ids or full URLs.
 
-HTTP and gRPC requests are reported (`http_req_duration`, `grpc_req_duration`). A request is failed when k6 says it failed (`http_req_failed` / `grpc_req_failed`, or `expected_response=false`). By default that is any status outside 200–399, plus network errors. `check()` does not change that on its own.
+HTTP and gRPC requests are reported (`http_req_duration`, `grpc_req_duration`). An HTTP request is failed when k6 says it failed (`http_req_failed`, or `expected_response=false`, or an `error` tag). By default that is any status outside 200–399, plus network errors. A gRPC call is failed when its status code is not 0. `check()` does not change that on its own.
 
 k6 does not pass request or response bodies to outputs by default. A transport failure is logged from the `error` tag. An HTTP error status has no `error` tag, so the response message is the reason phrase (for example `504` becomes `Gateway Timeout`) plus `error_code` when that tag is enabled. Include `error_code` in `systemTags` for that.
 
 When a request has a `name` tag, k6 copies that name into the `url` tag, so the exact URL is not available to outputs. To show it in failure logs, set a `request_url` tag on the request. The log then gets a `URL:` line under the sampler. Do not put URLs with credentials in that tag. Store `request_url` as a field, not a tag, in InfluxDB (`K6_INFLUXDB_TAGS_AS_FIELDS`).
 
-Request bodies can be sent as a `request_body` tag on each request. The hub enables this with `REPORT_REQUEST_BODIES`. Each request then carries its body, so that tag adds cost on every request, and InfluxDB should be off for that run.
+Request bodies can be sent as a `request_body` tag on each request. Each request then carries its body, so keep it short. In InfluxDB, store `request_body` as a field (`K6_INFLUXDB_TAGS_AS_FIELDS`), so it does not create a series per body.
 
-Response bodies cannot be a tag, because k6 sets tags before the response exists. Instead, the script writes an `rp_response_body` counter right after a failed response. Its `response_body` tag holds the body, and `name` and `vu` identify the request. The output holds each failed request until that counter arrives from the same VU, then attaches the body. A held request is released without a body when the same VU makes its next request, or when the test stops. The hub enables this with `REPORT_RESPONSE_BODIES`. Only failed responses are sent, so the extra data stays small. Include `vu` in `systemTags` so the body can be matched to its request. Store `response_body` as a field, not a tag, in InfluxDB (`K6_INFLUXDB_TAGS_AS_FIELDS`), so each body does not create a new series.
+Response bodies cannot be a tag, because k6 sets tags before the response exists. Instead, the script writes an `rp_response_body` counter right after a failed response. Its `response_body` tag holds the body, and `name` and `vu` identify the request. The output holds each failed request until that counter arrives from the same VU, then attaches the body. A held request is released without a body when the same VU makes its next request, or when the test stops. Only failed responses need to be sent, so the extra data stays small. Include `vu` in `systemTags` so the body can be matched to its request. Store `response_body` as a field, not a tag, in InfluxDB (`K6_INFLUXDB_TAGS_AS_FIELDS`), so each body does not create a new series.
 
 A start event is also sent to Google Analytics (agent name `@reportportal/k6`, plugin version, and the k6 version). It uses the same Measurement Protocol property as the JMeter and Gatling plugins, and the same anonymous client id in `~/.rp/rp.properties`. Set `AGENT_NO_ANALYTICS` to any value to skip it.
 
@@ -83,7 +83,7 @@ Or put them in `reportportal.properties` in the working directory. See [examples
 
 Resolution order, first non-blank wins: `--out` argument, environment variable, `reportportal.properties`. Missing endpoint, token, or project fails the run before the test starts.
 
-If the launch name is left unset, the output uses the script file name. The explicit default, when there is no script name either, is `k6 Performance Metrics`.
+If the launch name is left unset, the output uses the script file name, and falls back to `k6 Performance Metrics` when there is none.
 
 Name requests in the script:
 

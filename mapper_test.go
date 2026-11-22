@@ -11,7 +11,15 @@ import (
 	"github.com/reportportal/plugin-performance-k6/internal/perf"
 )
 
-func TestSamplesFromHTTPRequest(t *testing.T) {
+func samplesFrom(container metrics.SampleContainer) []perf.Sample {
+	var out []perf.Sample
+	for _, request := range requestsFrom(container) {
+		out = append(out, request.sample)
+	}
+	return out
+}
+
+func TestMapsHTTPRequest(t *testing.T) {
 	registry := metrics.NewRegistry()
 	duration := registry.MustNewMetric("http_req_duration", metrics.Trend)
 	failed := registry.MustNewMetric("http_req_failed", metrics.Trend)
@@ -33,7 +41,7 @@ func TestSamplesFromHTTPRequest(t *testing.T) {
 		},
 	}
 
-	got := SamplesFrom(container)
+	got := samplesFrom(container)
 	if len(got) != 1 {
 		t.Fatalf("samples %d", len(got))
 	}
@@ -68,7 +76,7 @@ func TestRequestBodyTagReachesFailureLog(t *testing.T) {
 		},
 	}
 
-	got := SamplesFrom(container)
+	got := samplesFrom(container)
 	if len(got) != 1 || got[0].RequestBody == nil || *got[0].RequestBody != `{"message":"hi"}` {
 		t.Fatalf("request body %+v", got)
 	}
@@ -97,7 +105,7 @@ func TestRequestURLTagReachesFailureLog(t *testing.T) {
 		},
 	}
 
-	got := SamplesFrom(container)
+	got := samplesFrom(container)
 	if len(got) != 1 || got[0].URL != "https://rp.example.test/api/v1/project/log?x=1" {
 		t.Fatalf("url %+v", got)
 	}
@@ -127,7 +135,7 @@ func TestHTTPStatusWithoutErrorTag(t *testing.T) {
 		},
 	}
 
-	got := SamplesFrom(container)
+	got := samplesFrom(container)
 	if len(got) != 1 {
 		t.Fatalf("samples %d", len(got))
 	}
@@ -144,6 +152,33 @@ func TestHTTPStatusWithoutErrorTag(t *testing.T) {
 	}
 	if !sample.EndTime().Equal(end) {
 		t.Fatalf("end %s", sample.EndTime())
+	}
+}
+
+func TestGRPCStatusDecidesFailure(t *testing.T) {
+	registry := metrics.NewRegistry()
+	duration := registry.MustNewMetric("grpc_req_duration", metrics.Trend)
+	at := time.UnixMilli(1_700_000_000_000)
+	call := func(status string) perf.Sample {
+		tags := registry.RootTagSet().With("name", "Say hello").With("status", status)
+		got := samplesFrom(metrics.ConnectedSamples{
+			Time: at,
+			Tags: tags,
+			Samples: []metrics.Sample{
+				{TimeSeries: metrics.TimeSeries{Metric: duration, Tags: tags}, Time: at, Value: 5},
+			},
+		})
+		if len(got) != 1 {
+			t.Fatalf("samples %d", len(got))
+		}
+		return got[0]
+	}
+
+	if ok := call("0"); !ok.Success {
+		t.Fatalf("status 0 is OK: %+v", ok)
+	}
+	if bad := call("14"); bad.Success || bad.ResponseCode != "14" {
+		t.Fatalf("status 14 is a failure: %+v", bad)
 	}
 }
 

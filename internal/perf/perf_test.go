@@ -1,6 +1,8 @@
 package perf
 
 import (
+	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -171,11 +173,12 @@ func TestParseAttributesAndFilter(t *testing.T) {
 func TestLoadConfigOrder(t *testing.T) {
 	dir := t.TempDir()
 	path := dir + "/reportportal.properties"
-	if err := writeFile(path, "rp.endpoint=https://from-file\nrp.api.key=file-token\nrp.project=file_project\nrp.launch=from file\n"); err != nil {
+	properties := "rp.endpoint=https://from-file\nrp.api.key=file-token\nrp.project=file_project\nrp.launch=from file\n"
+	if err := os.WriteFile(path, []byte(properties), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := Load(
-		"endpoint=https://from-arg;project=arg_project;attribute.1=env:staging",
+		"endpoint=https://from-arg;project=arg_project;attribute.1=env:staging;throughput.windowSizeSeconds=5",
 		map[string]string{"RP_ENDPOINT": "https://from-env", "RP_API_KEY": "env-token", "RP_PROJECT": "env_project", "RP_SLA_P95_MS": "800"},
 		path,
 	)
@@ -191,10 +194,13 @@ func TestLoadConfigOrder(t *testing.T) {
 	if cfg.SLA.P95Ms == nil || *cfg.SLA.P95Ms != 800 {
 		t.Fatalf("sla %+v", cfg.SLA)
 	}
+	if cfg.WindowSeconds != 5 {
+		t.Fatalf("window %d", cfg.WindowSeconds)
+	}
 	if len(cfg.Attributes) != 1 || cfg.Attributes[0].Key != "env" {
 		t.Fatalf("attrs %+v", cfg.Attributes)
 	}
-	if cfg.String() == "" || contains(cfg.String(), "env-token") {
+	if cfg.String() == "" || strings.Contains(cfg.String(), "env-token") {
 		t.Fatalf("string leaked token: %s", cfg.String())
 	}
 
@@ -278,17 +284,4 @@ func TestReporterHierarchyAndSLA(t *testing.T) {
 	if passed.launchStatus != "PASSED" {
 		t.Fatalf("launch without SLA should pass, got %s", passed.launchStatus)
 	}
-}
-
-func contains(s, part string) bool {
-	return len(part) == 0 || (len(s) >= len(part) && (s == part || len(s) > 0 && (stringIndex(s, part) >= 0)))
-}
-
-func stringIndex(s, part string) int {
-	for i := 0; i+len(part) <= len(s); i++ {
-		if s[i:i+len(part)] == part {
-			return i
-		}
-	}
-	return -1
 }

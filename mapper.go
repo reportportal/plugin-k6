@@ -12,25 +12,26 @@ import (
 	"github.com/reportportal/plugin-performance-k6/internal/perf"
 )
 
-// SamplesFrom converts one k6 sample batch into request samples.
-// Only http_req_duration and grpc_req_duration are requests. k6 emits those
-// once per call; submetric series are ignored by matching the metric name exactly.
-// The sample timestamp is the request completion time.
-func SamplesFrom(container metrics.SampleContainer) []perf.Sample {
-	var out []perf.Sample
-	for _, request := range requestsFrom(container) {
-		out = append(out, request.sample)
-	}
-	return out
-}
+// responseBodyMetric is the counter the script writes right after a failed response.
+// Its response_body tag holds the body, which is unknown when the request starts.
+const responseBodyMetric = "rp_response_body"
 
-// requestSample is one completed request plus the keys that pair it with its response body.
+// requestSample is one completed request plus the VU and name that pair it with a response body.
 type requestSample struct {
 	vu     string
-	key    string
+	name   string
 	sample perf.Sample
 }
 
+type responseBody struct {
+	vu   string
+	name string
+	text string
+}
+
+// requestsFrom maps http_req_duration and grpc_req_duration samples. k6 emits each
+// once per call, and matching the exact name keeps submetrics from counting twice.
+// The sample timestamp is the request completion time.
 func requestsFrom(container metrics.SampleContainer) []requestSample {
 	if container == nil {
 		return nil
@@ -46,24 +47,13 @@ func requestsFrom(container metrics.SampleContainer) []requestSample {
 		default:
 			continue
 		}
-		vu := tag(container, sample, "vu")
 		out = append(out, requestSample{
-			vu:     vu,
-			key:    bodyKey(vu, tag(container, sample, "name")),
+			vu:     tag(container, sample, "vu"),
+			name:   tag(container, sample, "name"),
 			sample: mapSample(container, raw, sample),
 		})
 	}
 	return out
-}
-
-// responseBodyMetric is the counter the k6 script writes right after a failed response.
-// Its response_body tag holds the body, so the body is not known when the request starts.
-const responseBodyMetric = "rp_response_body"
-
-type responseBody struct {
-	vu   string
-	key  string
-	text string
 }
 
 func responseBodiesFrom(container metrics.SampleContainer) []responseBody {
@@ -79,15 +69,13 @@ func responseBodiesFrom(container metrics.SampleContainer) []responseBody {
 		if text == "" {
 			continue
 		}
-		vu := tag(container, sample, "vu")
-		out = append(out, responseBody{vu: vu, key: bodyKey(vu, tag(container, sample, "name")), text: text})
+		out = append(out, responseBody{
+			vu:   tag(container, sample, "vu"),
+			name: tag(container, sample, "name"),
+			text: text,
+		})
 	}
 	return out
-}
-
-// bodyKey pairs a failed request with a response body from the same VU and request name.
-func bodyKey(vu, name string) string {
-	return vu + "\x00" + name
 }
 
 func mapSample(container metrics.SampleContainer, batch []metrics.Sample, sample metrics.Sample) perf.Sample {
@@ -141,7 +129,6 @@ func mapSample(container metrics.SampleContainer, batch []metrics.Sample, sample
 	if errorText != "" {
 		responseBody = &errorText
 	}
-	// The script sends the JSON body as a request_body tag when REPORT_REQUEST_BODIES is on.
 	var requestBody *string
 	if body := tag(container, sample, "request_body"); body != "" {
 		requestBody = &body
@@ -183,16 +170,17 @@ func responseMessage(status, errorText, errorCode string) string {
 }
 
 func failed(batch []metrics.Sample, duration metrics.Sample, container metrics.SampleContainer) bool {
-	failedName := strings.TrimSuffix(duration.Metric.Name, "duration") + "failed"
+	if duration.Metric.Name == "grpc_req_duration" {
+		// gRPC samples carry only the gRPC status code, where 0 is OK.
+		status := tag(container, duration, "status")
+		return status != "" && status != "0"
+	}
 	for _, sample := range batch {
-		if sample.Metric != nil && sample.Metric.Name == failedName {
+		if sample.Metric != nil && sample.Metric.Name == "http_req_failed" {
 			return sample.Value != 0
 		}
 	}
-	if tag(container, duration, "expected_response") == "false" {
-		return true
-	}
-	return tag(container, duration, "error") != ""
+	return tag(container, duration, "expected_response") == "false" || tag(container, duration, "error") != ""
 }
 
 func tag(container metrics.SampleContainer, sample metrics.Sample, key string) string {
@@ -212,19 +200,13 @@ func tag(container metrics.SampleContainer, sample metrics.Sample, key string) s
 	return ""
 }
 
+// groupPrefix turns k6's "::A::B" group path into "A / B".
 func groupPrefix(group string) string {
-	group = strings.TrimPrefix(group, "::")
-	if strings.Trim(group, ":") == "" {
-		return ""
-	}
-	parts := strings.Split(group, "::")
-	cleaned := make([]string, 0, len(parts))
-	for _, part := range parts {
-		part = strings.Trim(part, ":")
-		part = strings.TrimSpace(part)
-		if part != "" {
-			cleaned = append(cleaned, part)
+	var parts []string
+	for _, part := range strings.Split(group, "::") {
+		if part = strings.TrimSpace(part); part != "" {
+			parts = append(parts, part)
 		}
 	}
-	return strings.Join(cleaned, " / ")
+	return strings.Join(parts, " / ")
 }

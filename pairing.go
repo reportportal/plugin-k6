@@ -15,16 +15,11 @@ import (
 // arrives, when the VU makes another request (no body was sent), or at Stop.
 // Successful requests are never held.
 type bodyPairer struct {
-	held map[string]heldRequest // keyed by VU
-}
-
-type heldRequest struct {
-	key    string
-	sample perf.Sample
+	held map[string]requestSample // keyed by VU
 }
 
 func newBodyPairer() *bodyPairer {
-	return &bodyPairer{held: map[string]heldRequest{}}
+	return &bodyPairer{held: map[string]requestSample{}}
 }
 
 // Push takes one k6 sample container and returns the samples that are ready to report, in order.
@@ -32,7 +27,7 @@ func (p *bodyPairer) Push(container metrics.SampleContainer) []perf.Sample {
 	var ready []perf.Sample
 	for _, body := range responseBodiesFrom(container) {
 		held, ok := p.held[body.vu]
-		if !ok || held.key != body.key {
+		if !ok || held.name != body.name {
 			continue
 		}
 		delete(p.held, body.vu)
@@ -49,7 +44,7 @@ func (p *bodyPairer) Push(container metrics.SampleContainer) []perf.Sample {
 			ready = append(ready, request.sample)
 			continue
 		}
-		p.held[request.vu] = heldRequest{key: request.key, sample: request.sample}
+		p.held[request.vu] = request
 	}
 	return ready
 }

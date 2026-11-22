@@ -56,7 +56,7 @@ func New(params output.Params) (output.Output, error) {
 		logger:    params.Logger,
 		config:    cfg,
 		reporter:  perf.NewReporter(client, cfg.SLA, cfg.WindowSeconds, cfg.Attributes, logger),
-		analytics: perf.NewAnalytics(perf.AnalyticsEnabled(env), perf.PluginAgent(), logger),
+		analytics: perf.NewAnalytics(perf.AnalyticsEnabled(env), perf.PluginAgent()),
 		pairer:    newBodyPairer(),
 	}, nil
 }
@@ -86,10 +86,9 @@ func (o *Output) AddMetricSamples(containers []metrics.SampleContainer) {
 // report hands samples to the reporter, after the label filter.
 func (o *Output) report(samples []perf.Sample) {
 	for _, sample := range samples {
-		if o.config.Filter != nil && !o.config.Filter.Accept(sample.Label) {
-			continue
+		if o.config.Filter.Accept(sample.Label) {
+			o.reporter.Process(sample)
 		}
-		o.reporter.Process(sample)
 	}
 }
 
@@ -106,7 +105,7 @@ func scriptName(script *url.URL) string {
 	}
 	base := path.Base(script.Path)
 	name := strings.TrimSuffix(base, path.Ext(base))
-	if name == "" || name == "." || name == string(os.PathSeparator) {
+	if name == "" || name == "." || name == "/" {
 		return ""
 	}
 	return name

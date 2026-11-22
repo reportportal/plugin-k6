@@ -9,9 +9,8 @@ import (
 type Status string
 
 const (
-	StatusPass    Status = "PASS"
-	StatusFail    Status = "FAIL"
-	StatusSkipped Status = "SKIPPED"
+	StatusPass Status = "PASS"
+	StatusFail Status = "FAIL"
 )
 
 // SLAConfig holds optional global thresholds. A nil field disables that check.

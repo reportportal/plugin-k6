@@ -2,7 +2,6 @@ package perf
 
 import (
 	"fmt"
-	"os"
 	"time"
 )
 
@@ -78,8 +77,4 @@ func (f *fakePortal) remember(id, name string) {
 		f.ids = map[string]string{}
 	}
 	f.ids[id] = name
-}
-
-func writeFile(path, body string) error {
-	return os.WriteFile(path, []byte(body), 0o644)
 }
