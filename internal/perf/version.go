@@ -8,7 +8,7 @@ import (
 
 const (
 	// Version is the plugin version sent as agent_version and client_version.
-	Version = "1.0.0"
+	Version = "0.1.0"
 	// AgentName matches the @reportportal/<tool> names used by the JMeter and Gatling plugins.
 	AgentName = "@reportportal/k6"
 	// ClientName is the analytics client_name for this plugin.
